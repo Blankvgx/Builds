@@ -62,50 +62,6 @@ class testRabbitMQServer {
     }
 }
 
-function doValidate($sessionId) {
-    // Create a new MySQL connection
-    $mysqli = new mysqli("localhost", "IT490", "IT490", "imdb_database");
-
-    // Check for connection errors
-    if ($mysqli->connect_error) {
-    	echo ' [x] Connection failed for validation',"\n";
-        die("Connection failed: " . $mysqli->connect_error);
-    }
-
-    // Query to get the time for the given sessionId
-    $query = "SELECT time FROM users WHERE sessionId = '$sessionId'";
-    $result = $mysqli->query($query);
-
-    if ($result->num_rows > 0) {
-        $row = $result->fetch_assoc();
-        $dbTime = $row['time'];  // Time stored in the database (Unix timestamp)
-        $currentTime = time();   // Current Unix timestamp
-
-        echo ' [x] Validation TimeStamp: ', $currentTime , "\n";
-
-        // Check if the difference is more than 30 seconds
-        if (($currentTime - $dbTime) < 30) {
-            echo ' [x] Session expired (more than 30 seconds since last validation)', "\n";
-            return false;
-        }
-
-        // Update the time if validation is successful
-        $updateQuery = "UPDATE users SET time = UNIX_TIMESTAMP() WHERE sessionId = '$sessionId'";
-        $mysqli->query($updateQuery);
-
-        echo ' [x] Processing Validation', "\n";
-        echo ' [x] Validation Worked: ', $sessionId, "\n";
-        return true;
-    } else {
-        echo ' [x] Validation failed: Invalid sessionId', "\n";
-        return false;
-    }
-
-    // Close the result set and database connection
-    $result->free();
-    $mysqli->close();
-}
-
 function requestProcessor($request)
 {
     echo "received request".PHP_EOL;
@@ -198,6 +154,50 @@ function handleLogin($username, $password) {
         return false;
     }
     
+    $result->free();
+    $mysqli->close();
+}
+
+function doValidate($sessionId) {
+    // Create a new MySQL connection
+    $mysqli = new mysqli("localhost", "IT490", "IT490", "imdb_database");
+
+    // Check for connection errors
+    if ($mysqli->connect_error) {
+    	echo ' [x] Connection failed for validation',"\n";
+        die("Connection failed: " . $mysqli->connect_error);
+    }
+
+    // Query to get the time for the given sessionId
+    $query = "SELECT time FROM users WHERE sessionId = '$sessionId'";
+    $result = $mysqli->query($query);
+
+    if ($result->num_rows > 0) {
+        $row = $result->fetch_assoc();
+        $dbTime = $row['time'];  // Time stored in the database (Unix timestamp)
+        $currentTime = time();   // Current Unix timestamp
+
+        echo ' [x] Validation TimeStamp: ', $currentTime , "\n";
+
+        // Check if the difference is more than 30 seconds
+        if (($currentTime - $dbTime) < 30) {
+            echo ' [x] Session expired (more than 30 seconds since last validation)', "\n";
+            return false;
+        }
+
+        // Update the time if validation is successful
+        $updateQuery = "UPDATE users SET time = UNIX_TIMESTAMP() WHERE sessionId = '$sessionId'";
+        $mysqli->query($updateQuery);
+
+        echo ' [x] Processing Validation', "\n";
+        echo ' [x] Validation Worked: ', $sessionId, "\n";
+        return true;
+    } else {
+        echo ' [x] Validation failed: Invalid sessionId', "\n";
+        return false;
+    }
+
+    // Close the result set and database connection
     $result->free();
     $mysqli->close();
 }
