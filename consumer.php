@@ -68,11 +68,34 @@ function requestProcessor($request)
 	}
 	switch ($request['type'])
 	{
-	    	case "login":
-			return handleLogin($request['username'], $request['password']);
+	    	case "build":
+			return handleBuilds($request['build_name']);
 	}
 	return array("returnCode" => '0', 'message' => "Server received request and processed");
 }
+
+function handleBuilds($build_name) {
+    $mysqli = new mysqli("localhost", "IT490", "IT490", "builds");
+    
+    if ($mysqli->connect_error) {
+        echo ' [x] Connection failed for Handling Builds:', "\n";
+        die("Connection failed: " . $mysqli->connect_error);
+    }
+
+    echo ' [x] Receiving File: ' . $build_name, "\n";
+    $query = "INSERT INTO builds (build, created) VALUES ('$build_name', NOW())";
+    $result = $mysqli->query($query);
+
+    if ($result) {
+        echo '[x] File added to table', "\n";
+        return true;
+    } else {
+        echo "Query error: " . $mysqli->error;
+        return false;
+    }
+    $mysqli->close();
+}
+
 
 $server = new rabbitMQServer("testRabbitMQ.ini","testServer");
 echo "testRabbitMQServer BEGIN", "\n";
