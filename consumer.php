@@ -70,8 +70,40 @@ function requestProcessor($request)
 	{
 	    	case "build":
 			return handleBuilds($request['build_name']);
+		case "status":
+			return handleStatus($request['status'],$request['build']);
 	}
 	return array("returnCode" => '0', 'message' => "Server received request and processed");
+}
+
+function handleStatus($status, $build) {
+    $mysqli = new mysqli("localhost", "IT490", "IT490", "builds");
+
+    if ($mysqli->connect_error) {
+        echo ' [x] Connection failed for Handling Status:', "\n";
+        die("Connection failed: " . $mysqli->connect_error);
+    }
+
+    $query = "UPDATE builds SET status = ? WHERE build = ?";
+    $stmt = $mysqli->prepare($query);
+
+    if ($stmt) {
+        $stmt->bind_param("ss", $status, $build);
+        if ($stmt->execute()) {
+            echo '[✓] Build Status Updated: ', $status, "\n";
+            $stmt->close();
+            $mysqli->close();
+            return true;
+        } else {
+            echo '[x] Query Execution Error: ', $stmt->error, "\n";
+        }
+        $stmt->close();
+    } else {
+        echo '[x] Query Preparation Error: ', $mysqli->error, "\n";
+    }
+
+    $mysqli->close();
+    return false;
 }
 
 function handleBuilds($build_name) {
@@ -93,7 +125,6 @@ function handleBuilds($build_name) {
         echo "Query error: " . $mysqli->error;
         return false;
     }
-    $mysqli->close();
 }
 
 
