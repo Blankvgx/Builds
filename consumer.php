@@ -115,7 +115,7 @@ function handleBuilds($build_name) {
     }
 
     echo ' [x] Receiving File: ' . $build_name, "\n";
-    $query = "INSERT INTO builds (build, created) VALUES ('$build_name', NOW())";
+    $query = "INSERT INTO builds (build, created) VALUES ('$build_name', UNIX_TIMESTAMP())";
     $result = $mysqli->query($query);
 
     if ($result) {
