@@ -12,26 +12,29 @@ if (isset($argv[1])) {
     $msg = "";
 }
 
-// Ask the user for the build number
-echo "Enter the Project number: ";
-$buildNumber = trim(fgets(STDIN));
+// Ask the user for the build name
+echo "Enter the build name: ";
+$buildName = trim(fgets(STDIN));
 
-// Validate the input
-if (!ctype_digit($buildNumber)) {
-    die("Error: Build number must be a valid number.\n");
-}
+// Ask the user for the version number
+echo "Enter the version number: ";
+$versionNumber = trim(fgets(STDIN));
 
-// Dynamically generate the build name
-$build = "Project" . $buildNumber;
-
-echo "What is the build status (good/bad)? \n";
+// Ask the user for the status (passed/failed)
+echo "Enter the status (passed/failed): ";
 $status = trim(fgets(STDIN));
+
+// Validate the version number (ensure it's a positive integer)
+if (!ctype_digit($versionNumber) || $versionNumber <= 0) {
+    die("Error: Version number must be a valid positive integer.\n");
+}
 
 // Prepare the request array
 $request = array();
 $request['type'] = "status";
-$request['status'] = $status;
-$request['build'] = $build;
+$request['status'] = $status; 
+$request['build'] = $buildName;
+$request['version'] = $versionNumber;
 
 // Send the request to the RabbitMQ server
 $response = $client->send_request($request);
@@ -42,4 +45,5 @@ print_r($response);
 echo "\n\n";
 
 echo $argv[0] . " END" . PHP_EOL;
+?>
 

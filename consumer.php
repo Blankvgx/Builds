@@ -71,12 +71,12 @@ function requestProcessor($request)
 	    	case "build":
 			return handleBuilds($request['build_name']);
 		case "status":
-			return handleStatus($request['status'],$request['build']);
+			return handleStatus($request['status'],$request['build'],$request['version']);
 	}
 	return array("returnCode" => '0', 'message' => "Server received request and processed");
 }
 
-function handleStatus($status, $build) {
+function handleStatus($status, $build, $version) {
     $mysqli = new mysqli("localhost", "IT490", "IT490", "builds");
 
     if ($mysqli->connect_error) {
@@ -84,19 +84,32 @@ function handleStatus($status, $build) {
         die("Connection failed: " . $mysqli->connect_error);
     }
 
-    $query = "UPDATE builds SET status = ? WHERE build = ?";
+    // Check if the specific version for the build exists
+    $query = "SELECT * FROM builds WHERE build = ? AND version = ?";
     $stmt = $mysqli->prepare($query);
 
     if ($stmt) {
-        $stmt->bind_param("ss", $status, $build);
-        if ($stmt->execute()) {
-            echo '[✓] Build Status Updated: ', $status, "\n";
-            $stmt->close();
-            $mysqli->close();
-            return true;
+        $stmt->bind_param("si", $build, $version);
+        $stmt->execute();
+        $stmt->store_result();
+
+        if ($stmt->num_rows > 0) {
+            // If the version exists, update the status
+            $query = "UPDATE builds SET status = ? WHERE build = ? AND version = ?";
+            $stmt = $mysqli->prepare($query);
+            if ($stmt) {
+                $stmt->bind_param("ssi", $status, $build, $version);
+                if ($stmt->execute()) {
+                    echo '[✓] Build Status Updated for ' . $build . ' version ' . $version . ': ' . $status, "\n";
+                } else {
+                    echo '[x] Query Execution Error: ', $stmt->error, "\n";
+                }
+            }
         } else {
-            echo '[x] Query Execution Error: ', $stmt->error, "\n";
+            // If version doesn't exist, alert that version is not found
+            echo "[x] Error: Version " . $version . " for build " . $build . " does not exist.\n";
         }
+
         $stmt->close();
     } else {
         echo '[x] Query Preparation Error: ', $mysqli->error, "\n";
@@ -108,21 +121,67 @@ function handleStatus($status, $build) {
 
 function handleBuilds($build_name) {
     $mysqli = new mysqli("localhost", "IT490", "IT490", "builds");
-    
+
     if ($mysqli->connect_error) {
         echo ' [x] Connection failed for Handling Builds:', "\n";
         die("Connection failed: " . $mysqli->connect_error);
     }
 
     echo ' [x] Receiving File: ' . $build_name, "\n";
-    $query = "INSERT INTO builds (build, created) VALUES ('$build_name', UNIX_TIMESTAMP())";
-    $result = $mysqli->query($query);
 
-    if ($result) {
-        echo '[x] File added to table', "\n";
-        return true;
+    // Initialize version variable
+    $version = null;
+
+    // Get the max version for the build
+    $query = "SELECT MAX(version) AS max_version FROM builds WHERE build = ?";
+    $stmt = $mysqli->prepare($query);
+
+    if ($stmt) {
+        $stmt->bind_param("s", $build_name);
+        $stmt->execute();
+        $stmt->bind_result($max_version);
+        $stmt->fetch();
+
+        if ($max_version === null) {
+            $version = 1.0;
+        } else {
+            $version = $max_version + 1.0; // Increment version number
+        }
+        $stmt->close();
     } else {
-        echo "Query error: " . $mysqli->error;
+        echo '[x] Query Preparation Error: ', $mysqli->error, "\n";
+        return false;
+    }
+
+    // Insert the new build version into the database
+    $query = "INSERT INTO builds (build, version, created) VALUES (?, ?, UNIX_TIMESTAMP())";
+    $stmt = $mysqli->prepare($query);
+
+    if ($stmt) {
+        $stmt->bind_param("sd", $build_name, $version); // "s" -> string, "d" -> double
+        if ($stmt->execute()) {
+            echo '[✓] Build ' . $build_name . ' version ' . $version . ' added to the table', "\n";
+        } else {
+            echo "[x] Query Execution Error: " . $stmt->error, "\n";
+            $version = null; // Ensure no version is returned on failure
+        }
+        $stmt->close();
+    } else {
+        echo '[x] Query Preparation Error: ', $mysqli->error, "\n";
+        $version = null; // Ensure no version is returned on failure
+    }
+
+    $mysqli->close();
+
+    // Check if version was successfully updated/created
+    if ($version !== null) {
+        // Return the new version information
+        $request = array();
+        $request['type'] = "buildVersion";
+        $request['version'] = "v" . $version;
+        return $request;
+    } else {
+        echo "[x] Build version creation failed. No version returned.\n";
         return false;
     }
 }
