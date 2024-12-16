@@ -68,12 +68,12 @@ function requestProcessor($request) {
         case "build":
             return handleBuilds($request['build_name']);
         case "status":
-            return handleStatus($request['status'], $request['build'], $request['version']);
+            return handleStatus($request['status'], $request['build'], $request['version'], $request['devIP']);
     }
     return array("returnCode" => '0', 'message' => "Server received request and processed");
 }
 
-function handleStatus($status, $build, $version) {
+function handleStatus($status, $build, $version, $ipDest) {
     $mysqli = new mysqli("localhost", "IT490", "IT490", "builds");
 
     if ($mysqli->connect_error) {
@@ -81,25 +81,26 @@ function handleStatus($status, $build, $version) {
         die("Connection failed: " . $mysqli->connect_error);
     }
 
-    // Update the current build version's status
+    // Ensure the version number is treated as a string
     $query = "SELECT * FROM builds WHERE build = ? AND version = ?";
     $stmt = $mysqli->prepare($query);
 
     if ($stmt) {
-        $stmt->bind_param("si", $build, $version);
+        $stmt->bind_param("ss", $build, $version); // Ensure both are treated as strings
         $stmt->execute();
         $stmt->store_result();
 
         if ($stmt->num_rows > 0) {
+            // Update the current build version's status
             $query = "UPDATE builds SET status = ? WHERE build = ? AND version = ?";
             $stmt = $mysqli->prepare($query);
             if ($stmt) {
-                $stmt->bind_param("ssi", $status, $build, $version);
+                $stmt->bind_param("sss", $status, $build, $version); // Ensure both are treated as strings
                 if ($stmt->execute()) {
                     echo '[✓] Build Status Updated for ' . $build . ' version ' . $version . ': ' . $status, "\n";
 
                     if ($status === 'failed') {
-                        // Fetch the latest working version
+                        // Fetch the latest working version (a version that passed)
                         $query = "SELECT version FROM builds WHERE build = ? AND status = 'passed' ORDER BY version DESC LIMIT 1";
                         $stmt = $mysqli->prepare($query);
                         if ($stmt) {
@@ -108,7 +109,14 @@ function handleStatus($status, $build, $version) {
                             $stmt->bind_result($latestWorkingVersion);
                             if ($stmt->fetch()) {
                                 echo "[!] Latest working version: $latestWorkingVersion. Initiating rsync...\n";
-                                performRsync($build, $latestWorkingVersion);
+
+                                // Use the devIP from the request to sync to the right machine
+                                if (isset($ipDest)) {
+                                    performRsync($build, $latestWorkingVersion, $ipDest);
+                                } else {
+                                    echo "[x] Error: No destination IP provided.\n";
+                                }
+
                                 return array("latestWorkingVersion" => $latestWorkingVersion);
                             } else {
                                 return array("latestWorkingVersion" => null, "message" => "No working version found.");
@@ -132,31 +140,23 @@ function handleStatus($status, $build, $version) {
     return false;
 }
 
-function performRsync($buildName, $projectNumber) {
+function performRsync($buildName, $projectNumber, $ipDest) {
     $remoteUser = "brianfriday";
-    $remoteHosts = [
-        "172.24.2.1",
-        "172.24.2.2",
-        "172.24.2.3"
-    ];
     $remotePath = "/home/brianfriday/git";
     $password = "04202003";
 
     $localDirectories = [
-        "/home/markcgv/git/Builds/{$buildName}v{$projectNumber}/",
-        "/home/markcgv/git/Builds/{$buildName}v{$projectNumber}/",
         "/home/markcgv/git/Builds/{$buildName}v{$projectNumber}/"
     ];
 
-    foreach ($remoteHosts as $index => $remoteHost) {
-        $localDirectory = $localDirectories[$index];
-
+    foreach ($localDirectories as $index => $localDirectory) {
         if (!is_dir($localDirectory)) {
             echo "Warning: Local directory does not exist: $localDirectory. Skipping...\n";
             continue;
         }
 
-        $rsyncCommand = "rsync -az $localDirectory $remoteUser@$remoteHost:$remotePath";
+        // Use the provided destination IP
+        $rsyncCommand = "rsync -az $localDirectory $remoteUser@$ipDest:$remotePath";
 
         $expectScript = <<<EOD
 #!/usr/bin/expect -f
@@ -177,20 +177,15 @@ EOD;
         file_put_contents($expectScriptPath, $expectScript);
         chmod($expectScriptPath, 0700);
 
-        echo "Syncing $localDirectory to $remoteHost...\n";
+        echo "Syncing $localDirectory to $$ipDest...\n";
         $output = shell_exec("expect $expectScriptPath 2>&1");
         echo "Output:\n$output\n";
 
         unlink($expectScriptPath);
     }
 
-    echo "Rsync completed for build: {$buildName}_{$projectNumber}.\n";
+    echo "Rsync completed for build: {$buildName}v{$projectNumber}.\n";
 }
-
-$server = new testRabbitMQServer("testRabbitMQ.ini", "testServer");
-echo "testRabbitMQServer BEGIN", "\n";
-$server->process_requests('requestProcessor');
-echo "testRabbitMQServer END", "\n";
 
 function handleBuilds($build_name) {
     $mysqli = new mysqli("localhost", "IT490", "IT490", "builds");
@@ -214,9 +209,12 @@ function handleBuilds($build_name) {
         $stmt->fetch();
 
         if ($max_version === null) {
-            $version = 1.0;
+            $version = 1; // Start with version 1
         } else {
-            $version = $max_version + 1.0; // Increment version number
+            // Convert version to integer (e.g., "1.1" => 11)
+            $version_int = (int)(floatval($max_version) * 10);
+            $version_int += 1; // Increment version
+            $version = $version_int / 10; // Convert back to float (e.g., 12 => "1.2")
         }
         $stmt->close();
     } else {
@@ -228,7 +226,7 @@ function handleBuilds($build_name) {
     $stmt = $mysqli->prepare($query);
 
     if ($stmt) {
-        $stmt->bind_param("sd", $build_name, $version); // "s" is string, "d" is double
+        $stmt->bind_param("sd", $build_name, $version); // "d" for float
         if ($stmt->execute()) {
             echo '[✓] Build ' . $build_name . ' version ' . $version . ' added to the table', "\n";
         } else {
