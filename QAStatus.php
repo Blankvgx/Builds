@@ -32,16 +32,21 @@ if (!ctype_digit($versionNumber) || $versionNumber <= 0) {
 // Prepare the request array
 $request = array();
 $request['type'] = "status";
-$request['status'] = $status; 
+$request['status'] = $status;
 $request['build'] = $buildName;
 $request['version'] = $versionNumber;
 
 // Send the request to the RabbitMQ server
 $response = $client->send_request($request);
 
-// Display the response
-echo "Client received response: " . PHP_EOL;
-print_r($response);
+// Handle the response
+if ($status === "failed" && isset($response['latestWorkingVersion'])) {
+    echo "[!] Latest working version received: " . $response['latestWorkingVersion'] . PHP_EOL;
+} else {
+    echo "Client received response: " . PHP_EOL;
+    print_r($response);
+}
+
 echo "\n\n";
 
 echo $argv[0] . " END" . PHP_EOL;
